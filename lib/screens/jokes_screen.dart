@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:jokes_app/models/jokes_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class JokesScreen extends StatefulWidget {
   const JokesScreen({super.key});
@@ -16,20 +17,47 @@ class _JokesScreenState extends State<JokesScreen> {
   List<Joke> jokesList = [];
 
   void fetchJokes() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
     Response response;
-    response = await dio.get('https://v2.jokeapi.dev/joke/Any\?amount\=3',
-        queryParameters: {"type": "twopart"});
+
     try {
+      // Fetch jokes from API
+      response = await dio.get(
+        'https://v2.jokeapi.dev/joke/Any?amount=3',
+        queryParameters: {"type": "twopart"},
+      );
+
       if (response.statusCode == 200) {
-        // Directly access the response data
+        // Process and cache jokes
         setState(() {
           jokes = response.data['jokes'];
           jokesList = jokes
               .map((joke) => Joke.fromMap(joke as Map<String, dynamic>))
               .toList();
         });
-      } else {}
-    } on Exception catch (e) {
+
+        // Convert jokesList to a List of Strings for SharedPreferences
+        List<String> jokesStringList =
+            jokesList.map((joke) => joke.toJson()).toList();
+        await prefs.setStringList('cachedJokesList', jokesStringList);
+      }
+    } catch (e) {
+      // Handle Dio errors
+      print("Dio Error: $e");
+
+      // Load cached jokes when offline
+      List<String>? cachedJokes = prefs.getStringList('cachedJokesList');
+      if (cachedJokes != null) {
+        setState(() {
+          jokesList = cachedJokes
+              .map((jokeString) => Joke.fromJson(jokeString))
+              .toList();
+        });
+      } else {
+        throw Exception("No jokes available offline.");
+      }
+    } catch (e) {
+      // Handle other exceptions
       throw Exception("Error: $e");
     }
   }
